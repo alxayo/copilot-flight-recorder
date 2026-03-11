@@ -1,7 +1,7 @@
 {
   "name": "copilot-flight-recorder",
   "description": "A full audit trail for GitHub Copilot agent sessions. Captures every prompt, response, and file change, committing them linearly to a configurable external git repo.",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "author": {
     "name": "alxayo",
     "url": "https://github.com/alxayo"
