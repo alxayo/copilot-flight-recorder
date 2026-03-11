@@ -2,6 +2,8 @@
 
 A full audit trail for your GitHub Copilot agent sessions. Every prompt, response, and file change is captured and committed linearly to a configurable external git repo — giving you a complete record you can review, search, or use to reproduce sessions exactly as they happened.
 
+Viewer dashboard at:[github.com/alxayo/copilot-flight-recorder](https://github.com/alxayo/copilot-flight-recorder-viewer)
+
 ## System Requirements
 
 - **VS Code** 1.99 or later with the **GitHub Copilot Chat** extension
