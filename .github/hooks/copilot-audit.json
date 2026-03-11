@@ -3,32 +3,32 @@
     "SessionStart": [
       {
         "type": "command",
-        //"command": "bash .github/hooks/scripts/session-start.sh",
-        //"windows": "powershell -ExecutionPolicy Bypass -File .github/hooks/scripts/session-start.ps1",
+        "command": "bash .github/hooks/scripts/session-start.sh",
+        "windows": "powershell -ExecutionPolicy Bypass -File .github/hooks/scripts/session-start.ps1",
         "timeout": 30
       }
     ],
     "UserPromptSubmit": [
       {
         "type": "command",
-        //"command": "bash .github/hooks/scripts/commit-prompt.sh",
-        //"windows": "powershell -ExecutionPolicy Bypass -File .github/hooks/scripts/commit-prompt.ps1",
+        "command": "bash .github/hooks/scripts/commit-prompt.sh",
+        "windows": "powershell -ExecutionPolicy Bypass -File .github/hooks/scripts/commit-prompt.ps1",
         "timeout": 15
       }
     ],
     "PostToolUse": [
       {
         "type": "command",
-        //"command": "bash .github/hooks/scripts/commit-changes.sh",
-        //"windows": "powershell -ExecutionPolicy Bypass -File .github/hooks/scripts/commit-changes.ps1",
+        "command": "bash .github/hooks/scripts/commit-changes.sh",
+        "windows": "powershell -ExecutionPolicy Bypass -File .github/hooks/scripts/commit-changes.ps1",
         "timeout": 15
       }
     ],
     "Stop": [
       {
         "type": "command",
-        //"command": "bash .github/hooks/scripts/finalize-session.sh",
-        //"windows": "powershell -ExecutionPolicy Bypass -File .github/hooks/scripts/finalize-session.ps1",
+        "command": "bash .github/hooks/scripts/finalize-session.sh",
+        "windows": "powershell -ExecutionPolicy Bypass -File .github/hooks/scripts/finalize-session.ps1",
         "timeout": 30
       }
     ]
