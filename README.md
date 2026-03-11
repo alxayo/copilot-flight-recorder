@@ -130,3 +130,78 @@ All other tools (terminal, search, etc.) are silently skipped.
 - `git diff HEAD` captures **cumulative** workspace changes, not per-tool incremental diffs. If you make manual edits between tool uses, those appear in the patch too.
 - Brand-new untracked files (from `create_file`) are captured as raw content rather than unified diff format.
 - No file-locking: concurrent sessions targeting the same audit repo could interleave commits. Use per-session mode or separate audit repos to avoid this.
+
+## Plugin Installation
+
+copilot-flight-recorder is packaged as a [VS Code Agent Plugin](https://code.visualstudio.com/docs/copilot/customization/agent-plugins) and can be installed in several ways.
+
+> **Prerequisite**: Enable agent plugins in VS Code with `"chat.plugins.enabled": true`.
+
+### Option 1: Install from a release archive
+
+1. Download the latest `.zip` or `.tar.gz` from [Releases](https://github.com/alxayo/copilot-flight-recorder/releases).
+2. Extract to a directory (e.g. `~/.copilot-plugins/copilot-flight-recorder`).
+3. Add to your VS Code `settings.json`:
+   ```json
+   "chat.plugins.paths": {
+     "/path/to/copilot-flight-recorder": true
+   }
+   ```
+
+### Option 2: Install from git (clone)
+
+```bash
+git clone https://github.com/alxayo/copilot-flight-recorder.git ~/.copilot-plugins/copilot-flight-recorder
+```
+
+Then add the path to `chat.plugins.paths` as shown above.
+
+### Option 3: Use as a marketplace source
+
+Add the repo directly as a plugin marketplace in your VS Code `settings.json`:
+
+```json
+"chat.plugins.marketplaces": ["alxayo/copilot-flight-recorder"]
+```
+
+VS Code will discover and offer the plugin for installation automatically.
+
+### Option 4: Use the install script
+
+From a cloned copy of this repo:
+
+```bash
+# Linux / macOS
+./scripts/install-plugin.sh
+
+# Windows (PowerShell)
+.\scripts\install-plugin.ps1
+```
+
+The script copies the plugin to `~/.copilot-plugins/copilot-flight-recorder` and prints the `settings.json` snippet to activate it.
+
+## Building the Plugin Package
+
+To create distributable archives from source:
+
+```bash
+# Linux / macOS
+bash scripts/build-plugin.sh
+
+# Windows (PowerShell)
+powershell -ExecutionPolicy Bypass -File scripts\build-plugin.ps1
+```
+
+This produces `dist/copilot-flight-recorder-<version>.zip` and `.tar.gz` archives ready for distribution.
+
+### CI/CD
+
+A GitHub Actions workflow (`.github/workflows/release-plugin.yml`) automatically:
+1. **Validates** the plugin structure (all required files, valid JSON)
+2. **Builds** the zip and tar.gz archives
+3. **Publishes** them as GitHub Release assets when you push a version tag:
+
+```bash
+git tag v1.0.0
+git push origin v1.0.0
+```

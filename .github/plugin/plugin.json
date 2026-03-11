@@ -1,0 +1,25 @@
+{
+  "name": "copilot-flight-recorder",
+  "description": "A full audit trail for GitHub Copilot agent sessions. Captures every prompt, response, and file change, committing them linearly to a configurable external git repo.",
+  "version": "1.0.0",
+  "author": {
+    "name": "alxayo",
+    "url": "https://github.com/alxayo"
+  },
+  "repository": "https://github.com/alxayo/copilot-flight-recorder",
+  "homepage": "https://github.com/alxayo/copilot-flight-recorder",
+  "license": "MIT",
+  "keywords": [
+    "audit",
+    "logging",
+    "compliance",
+    "hooks",
+    "session-recording",
+    "git",
+    "traceability",
+    "flight-recorder"
+  ],
+  "hooks": [
+    "./hooks/copilot-audit.json"
+  ]
+}
