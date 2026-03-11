@@ -1,6 +1,33 @@
-# Copilot Chat Audit Hooks
+# copilot-flight-recorder
 
-Capture every prompt, response, and file change from VS Code Copilot chat sessions and commit them linearly to a configurable external git repo.
+A full audit trail for your GitHub Copilot agent sessions. Every prompt, response, and file change is captured and committed linearly to a configurable external git repo — giving you a complete record you can review, search, or use to reproduce sessions exactly as they happened.
+
+## System Requirements
+
+- **VS Code** 1.99 or later with the **GitHub Copilot Chat** extension
+- **Git** 2.20+ available on `PATH`
+- **jq** (Linux/macOS only) — [install guide](https://jqlang.github.io/jq/download/)
+- **PowerShell** 5.1+ (Windows) or **Bash** 4+ (Linux/macOS)
+- **Operating systems**: Windows, macOS, Linux
+
+## Coding Agent Compatibility
+
+This hook system uses the [VS Code Copilot Chat Hooks API](https://code.visualstudio.com/docs/copilot/customization/hooks), which relies on `.github/hooks/copilot-audit.json` and the specific hook events (`SessionStart`, `UserPromptSubmit`, `PostToolUse`, `Stop`) provided by the VS Code Copilot extension.
+
+### ✅ Supported
+
+| Agent | Notes |
+|---|---|
+| **GitHub Copilot Chat (VS Code)** | Fully supported. All four hook events are used for complete audit coverage: session lifecycle, prompt capture, file-change diffs, and transcript export. |
+
+### ❌ Not Supported
+
+| Agent | Why |
+|---|---|
+| **GitHub Copilot CLI** (`gh copilot`) | The CLI has no hook or plugin system. It does not load `.github/hooks/` configs or emit any of the required events. A shell wrapper around `gh copilot` would be needed for CLI audit logging. |
+| **Anthropic Claude Code** | Claude Code has its own hooks system (configured via `.claude/settings.json`) with different event names, JSON payload shapes, and tool names. It lacks `SessionStart` and `UserPromptSubmit` events, so prompt capture and session initialization would not be possible. The core git/audit scripts could be adapted, but the hook wiring, JSON parsing, and tool filtering would need to be rewritten. |
+| **Cursor** | Cursor does not expose a hooks API compatible with this system. |
+| **Other editors/agents** | Any tool that does not implement the VS Code Copilot Chat Hooks specification will not work with this system. |
 
 ## How It Works
 
@@ -33,15 +60,6 @@ Each file gets its own commit with a descriptive message like `[<sessionId>] pro
         ├── 005-changes.patch
         └── transcript.json
 ```
-
-## Prerequisites
-
-- **Git** available on `PATH`
-- **jq** (Linux/macOS only) — [install guide](https://jqlang.github.io/jq/download/)
-- An **initialised git repository** to use as the audit repo:
-  ```bash
-  mkdir ~/copilot-audit && cd ~/copilot-audit && git init
-  ```
 
 ## Setup
 
