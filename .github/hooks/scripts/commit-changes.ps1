@@ -48,13 +48,39 @@ if (-not $diff) { exit 0 }
 $sdir = Get-SessionDir
 New-Item -ItemType Directory -Path $sdir -Force | Out-Null
 
-$counter  = Get-NextCounter
-$fileName = "${counter}-changes.patch"
-$destPath = Join-Path $sdir $fileName
+$counter      = Get-NextCounter
+$fileName     = "${counter}-changes.patch"
+$metaFileName = "${counter}-changes.meta.json"
+$destPath     = Join-Path $sdir $fileName
+$metaDestPath = Join-Path $sdir $metaFileName
 
 Set-Content -Path $destPath -Value $diff -Encoding UTF8
 
+# Build metadata sidecar for cross-referencing audit repo ↔ source repo
+$workspaceHead   = ""
+$fileContentHash = $null
+if ($script:HookCwd -and (Test-Path (Join-Path $script:HookCwd ".git"))) {
+    $workspaceHead = git -C $script:HookCwd rev-parse HEAD 2>$null
+    if (-not $workspaceHead) { $workspaceHead = "" }
+}
+if ($affectedFile -and (Test-Path $affectedFile)) {
+    $fileContentHash = git hash-object $affectedFile 2>$null
+    if (-not $fileContentHash) { $fileContentHash = $null }
+}
+
+$meta = [PSCustomObject]@{
+    sessionId       = $script:SessionId
+    filePath        = if ($affectedFile) { $affectedFile } else { "unknown" }
+    workspaceHead   = $workspaceHead
+    fileContentHash = $fileContentHash
+    timestamp       = $script:Timestamp
+    toolName        = $toolName
+    patchFile       = $fileName
+}
+$meta | ConvertTo-Json -Depth 4 | Set-Content -Path $metaDestPath -Encoding UTF8
+
 $shortFile = if ($affectedFile) { Split-Path $affectedFile -Leaf } else { "unknown" }
 
+git -C $script:AuditRepo add -- "sessions/$($script:SessionId)/$metaFileName"
 New-AuditCommit -FilePath "sessions/$($script:SessionId)/$fileName" `
   -Message "[$($script:SessionId)] changes: $toolName on $shortFile"

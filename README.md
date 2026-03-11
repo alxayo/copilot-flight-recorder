@@ -56,8 +56,10 @@ Each file gets its own commit with a descriptive message like `[<sessionId>] pro
         ├── 001-session-start.md
         ├── 002-prompt.md
         ├── 003-changes.patch
+        ├── 003-changes.meta.json
         ├── 004-prompt.md
         ├── 005-changes.patch
+        ├── 005-changes.meta.json
         └── transcript.json
 ```
 
@@ -224,6 +226,57 @@ The `PostToolUse` hook only captures diffs when these VS Code tools are used:
 - `delete_file`
 
 All other tools (terminal, search, etc.) are silently skipped.
+
+## Cross-Referencing Audit Data with Source Commits
+
+Each `PostToolUse` event produces a `.meta.json` sidecar file alongside the `.patch` file, capturing workspace git state at the time of the edit:
+
+```json
+{
+  "sessionId": "a1b2c3d4",
+  "filePath": "src/handler.ts",
+  "workspaceHead": "abc123def456",
+  "fileContentHash": "789abc012def",
+  "timestamp": "2026-03-11T10:30:00.000Z",
+  "toolName": "replace_string_in_file",
+  "patchFile": "003-changes.patch"
+}
+```
+
+| Field | Description |
+|---|---|
+| `workspaceHead` | `git rev-parse HEAD` of the source repo at edit time — the baseline commit the `.patch` diff is relative to |
+| `fileContentHash` | `git hash-object` of the file after the edit — a content-addressable hash even without a commit. `null` for file deletions |
+| `patchFile` | Name of the companion `.patch` file containing the actual diff |
+
+### How to correlate with source commits
+
+Copilot edits files in the working tree without committing. When the user eventually commits (e.g. `xyz789`), its parent is the `workspaceHead` recorded in the metadata. To find all Copilot-driven edits that became part of a commit:
+
+```bash
+# Find the parent of a source commit
+PARENT=$(git rev-parse xyz789~1)
+
+# Find all audit metadata referencing that baseline
+jq -s "[.[] | select(.workspaceHead == \"$PARENT\")]" \
+  sessions/*/???-changes.meta.json
+```
+
+### Useful queries
+
+```bash
+# All files changed by a specific session
+jq -s '[.[] | select(.sessionId == "a1b2c3d4") | .filePath]' \
+  sessions/*/???-changes.meta.json
+
+# All sessions that touched a specific file
+jq -s '[.[] | select(.filePath | endswith("handler.ts")) | .sessionId] | unique' \
+  sessions/*/???-changes.meta.json
+
+# Full cross-reference table
+jq -s '[.[] | {sessionId, filePath, workspaceHead, toolName}]' \
+  sessions/*/???-changes.meta.json
+```
 
 ## Verification
 
