@@ -85,6 +85,122 @@ Each file gets its own commit with a descriptive message like `[<sessionId>] pro
 
 5. **Start a Copilot chat session.** Check the **GitHub Copilot Chat Hooks** output channel to verify hooks are executing.
 
+## Same-Repo Audit with Git Worktrees
+
+By default the audit trail lives in a **separate** git repository. If you prefer to keep everything in a single repo — your source code on `main` and audit data on an `audit` branch — you can use a [git worktree](https://git-scm.com/docs/git-worktree).
+
+### Why a worktree?
+
+The hooks need to `git checkout` the audit branch and commit files to it. If the audit repo is your main workspace directory, that checkout would **switch your working tree away from your development branch**, breaking your editor state and any in-progress work. A worktree gives you a second checkout directory backed by the exact same `.git` database, so both branches can be checked out simultaneously without interference.
+
+### One-time setup
+
+Run these commands from your project root (e.g. `C:\code\myproject`):
+
+```powershell
+# 1. Create an orphan "audit" branch with no files (keeps history separate from code)
+git checkout --orphan audit
+git rm -rf .
+git commit --allow-empty -m "audit: init"
+git checkout main          # switch back to your working branch
+
+# 2. Create a worktree directory so the audit branch has its own checkout
+#    Place it next to (not inside) your project directory
+git worktree add ../myproject-audit audit
+```
+
+On Linux/macOS the commands are identical — just adjust the path style:
+```bash
+git worktree add ../myproject-audit audit
+```
+
+This creates `../myproject-audit/` checked out on the `audit` branch.
+
+### Configure the `.env`
+
+Point `COPILOT_AUDIT_REPO` at the worktree directory:
+
+```ini
+# .env (in your project root)
+COPILOT_AUDIT_REPO=C:\code\myproject-audit   # absolute path to the worktree
+COPILOT_AUDIT_BRANCH=audit
+COPILOT_AUDIT_MODE=flat
+COPILOT_AUDIT_PUSH=false
+```
+
+On Linux/macOS:
+```ini
+COPILOT_AUDIT_REPO=/home/you/code/myproject-audit
+```
+
+### How it works under the hood
+
+```
+myproject/                  ← your normal workspace (branch: main)
+├── .git/                   ← shared git database
+├── .env                    ← points COPILOT_AUDIT_REPO to the worktree
+├── .github/hooks/          ← copilot-flight-recorder hooks
+└── src/                    ← your source code
+
+myproject-audit/            ← worktree checkout (branch: audit)
+├── sessions/
+│   └── <sessionId>/
+│       ├── 001-session-start.md
+│       ├── 002-prompt.md
+│       ├── 003-changes.patch
+│       └── transcript.json
+```
+
+- Both directories share the **same `.git` database**, same remotes, same refs.
+- Commits made in either directory are immediately visible to the other.
+- Branches are independent — updating `audit` never touches `main` and vice versa.
+
+### Pushing the audit branch
+
+You can push the `audit` branch from **either** directory at any time, regardless of which branch is checked out in the other:
+
+```powershell
+# From your main workspace
+git push origin audit
+
+# Or from the worktree
+git -C C:\code\myproject-audit push origin audit
+```
+
+To push automatically after each session, set `COPILOT_AUDIT_PUSH=true` in your `.env`.
+
+### Viewing audit history from your main workspace
+
+Since it's the same repo, all standard git commands work:
+
+```powershell
+# See audit commits
+git log audit --oneline
+
+# Show a specific session's files
+git show audit:sessions/<sessionId>/001-session-start.md
+
+# Diff between two audit commits
+git diff audit~5..audit
+```
+
+### Removing the worktree (keeping the branch)
+
+If you no longer need the separate checkout directory:
+
+```powershell
+git worktree remove ../myproject-audit
+```
+
+The `audit` branch and all its commits remain in the repo. You can recreate the worktree at any time with `git worktree add`.
+
+### Important notes
+
+- **Don't nest the worktree inside your project** — place it alongside (e.g. `../myproject-audit`) so that your workspace's `.gitignore` and file watchers don't interfere with it.
+- The `audit` branch is an **orphan branch** with its own independent history. It shares no commits with `main` and merging it is neither required nor recommended.
+- If you use **per-session mode** (`COPILOT_AUDIT_MODE=per-session`), each session creates a `session/<id>` branch. These also branch off within the same repo and are visible everywhere.
+- **Concurrent sessions**: If multiple VS Code windows use the same worktree, commits may interleave. Use per-session mode or separate worktrees per workspace to avoid this.
+
 ## Configuration
 
 All settings can be provided as environment variables or in a `.env` file at the workspace root. Environment variables take priority.
