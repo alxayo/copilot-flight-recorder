@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# UserPromptSubmit hook — capture the user's prompt
+# userPromptSubmitted hook — capture the user's prompt
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$SCRIPT_DIR/audit-common.sh"
 
@@ -23,6 +23,14 @@ FILENAME="${COUNTER}-prompt.md"
   echo ""
   echo "$PROMPT"
 } > "$SDIR/$FILENAME"
+
+# Append to transcript
+TRANSCRIPT_ENTRY=$(jq -nc \
+  --arg type "prompt" \
+  --arg prompt "$PROMPT" \
+  --argjson timestamp "${TIMESTAMP:-0}" \
+  '{type: $type, prompt: $prompt, timestamp: $timestamp}')
+append_transcript "$TRANSCRIPT_ENTRY"
 
 # Truncate prompt for the commit message
 SHORT_PROMPT="${PROMPT:0:50}"

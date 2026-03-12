@@ -1,4 +1,4 @@
-# UserPromptSubmit hook — capture the user's prompt
+# userPromptSubmitted hook — capture the user's prompt
 $ErrorActionPreference = "Stop"
 . "$PSScriptRoot\audit-common.ps1"
 
@@ -21,6 +21,14 @@ $filePath = Join-Path $sdir $fileName
 
 $prompt
 "@ | Set-Content -Path $filePath -Encoding UTF8
+
+# Append to transcript
+$transcriptEntry = [PSCustomObject]@{
+    type      = "prompt"
+    prompt    = $prompt
+    timestamp = $script:Timestamp
+} | ConvertTo-Json -Compress
+Add-TranscriptEntry $transcriptEntry
 
 $shortPrompt = if ($prompt.Length -gt 50) { $prompt.Substring(0, 50) } else { $prompt }
 
