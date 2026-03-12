@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Shared utilities for Copilot Audit Hooks (Bash/Linux/macOS)
+# Shared utilities for Copilot CLI Audit Hooks (Bash/Linux/macOS)
 set -euo pipefail
 
 AUDIT_REPO=""
@@ -11,22 +11,15 @@ INPUT=""
 SESSION_ID=""
 HOOK_CWD=""
 TIMESTAMP=""
-TRANSCRIPT_PATH=""
 
 # ---------------------------------------------------------------------------
 # Read JSON from stdin and extract common fields
+# CLI payloads have: timestamp (Unix ms), cwd. No session_id or transcript_path.
 # ---------------------------------------------------------------------------
 read_input() {
   INPUT=$(cat)
-  SESSION_ID=$(echo "$INPUT" | jq -r '.session_id // empty')
   HOOK_CWD=$(echo "$INPUT" | jq -r '.cwd // empty')
   TIMESTAMP=$(echo "$INPUT" | jq -r '.timestamp // empty')
-  TRANSCRIPT_PATH=$(echo "$INPUT" | jq -r '.transcript_path // empty')
-
-  if [[ -z "$SESSION_ID" ]]; then
-    echo "ERROR: No session_id in hook input" >&2
-    exit 2
-  fi
 }
 
 # Extract a single field from the stored INPUT JSON
@@ -79,6 +72,47 @@ load_config() {
     echo "ERROR: $AUDIT_REPO is not a git repository" >&2
     exit 2
   fi
+}
+
+# ---------------------------------------------------------------------------
+# Session ID synthesis
+# CLI provides no session_id. We synthesize one at sessionStart and persist
+# it in a temp file keyed by cwd hash + parent PID.
+# ---------------------------------------------------------------------------
+cwd_hash() {
+  echo -n "${HOOK_CWD:-unknown}" | md5sum | cut -c1-8
+}
+
+session_id_file() {
+  local hash
+  hash=$(cwd_hash)
+  echo "/tmp/copilot-audit-${hash}-${PPID}"
+}
+
+generate_session_id() {
+  local datestamp
+  datestamp=$(date -u +"%Y%m%d-%H%M%S")
+  local hash
+  hash=$(cwd_hash)
+  SESSION_ID="cli-${datestamp}-${hash}"
+  echo "$SESSION_ID" > "$(session_id_file)"
+}
+
+read_session_id() {
+  local id_file
+  id_file=$(session_id_file)
+  if [[ -f "$id_file" ]]; then
+    SESSION_ID=$(cat "$id_file")
+  else
+    echo "ERROR: No session ID file found at $id_file. Was sessionStart called?" >&2
+    exit 2
+  fi
+}
+
+cleanup_session_id() {
+  local id_file
+  id_file=$(session_id_file)
+  rm -f "$id_file"
 }
 
 # ---------------------------------------------------------------------------
@@ -139,8 +173,39 @@ audit_commit() {
 }
 
 # ---------------------------------------------------------------------------
-# Full initialisation: read stdin, load config, set up branch
-# Call this at the top of every hook script.
+# Append a JSON line to the session transcript JSONL file
+# ---------------------------------------------------------------------------
+append_transcript() {
+  local json_line="$1"
+  local sdir
+  sdir="$(session_dir)"
+  echo "$json_line" >> "$sdir/session-transcript.jsonl"
+}
+
+# ---------------------------------------------------------------------------
+# Full initialisation for sessionStart: read stdin, load config, generate
+# session ID, set up branch. Call this ONLY from session-start.sh.
+# ---------------------------------------------------------------------------
+init_audit_session_start() {
+  if ! command -v jq &>/dev/null; then
+    echo "ERROR: jq is required for audit hooks. Install it: https://jqlang.github.io/jq/" >&2
+    exit 2
+  fi
+
+  read_input
+  load_config
+  generate_session_id
+
+  if [[ "$AUDIT_MODE" == "per-session" ]]; then
+    ensure_branch "session/$SESSION_ID"
+  else
+    ensure_branch "$AUDIT_BRANCH"
+  fi
+}
+
+# ---------------------------------------------------------------------------
+# Full initialisation for all hooks except sessionStart: read stdin, load
+# config, read session ID from temp file, set up branch.
 # ---------------------------------------------------------------------------
 init_audit() {
   if ! command -v jq &>/dev/null; then
@@ -150,6 +215,7 @@ init_audit() {
 
   read_input
   load_config
+  read_session_id
 
   if [[ "$AUDIT_MODE" == "per-session" ]]; then
     ensure_branch "session/$SESSION_ID"

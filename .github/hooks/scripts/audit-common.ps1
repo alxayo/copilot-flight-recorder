@@ -1,4 +1,4 @@
-# Shared utilities for Copilot Audit Hooks (PowerShell / Windows)
+# Shared utilities for Copilot CLI Audit Hooks (PowerShell / Windows)
 $ErrorActionPreference = "Stop"
 
 $script:AuditRepo   = ""
@@ -10,23 +10,16 @@ $script:HookInput      = $null
 $script:SessionId      = ""
 $script:HookCwd        = ""
 $script:Timestamp      = ""
-$script:TranscriptPath = ""
 
 # ---------------------------------------------------------------------------
 # Read JSON from stdin and extract common fields
+# CLI payloads have: timestamp (Unix ms), cwd. No session_id or transcript_path.
 # ---------------------------------------------------------------------------
 function Read-HookInput {
     $raw = [Console]::In.ReadToEnd()
     $script:HookInput      = $raw | ConvertFrom-Json
-    $script:SessionId      = $script:HookInput.session_id
     $script:HookCwd        = $script:HookInput.cwd
     $script:Timestamp      = $script:HookInput.timestamp
-    $script:TranscriptPath = $script:HookInput.transcript_path
-
-    if (-not $script:SessionId) {
-        Write-Error "No session_id in hook input"
-        exit 2
-    }
 }
 
 # Extract a single property from the stored HookInput object
@@ -75,6 +68,47 @@ function Read-Config {
         Write-Error "$($script:AuditRepo) is not a git repository"
         exit 2
     }
+}
+
+# ---------------------------------------------------------------------------
+# Session ID synthesis
+# CLI provides no session_id. We synthesize one at sessionStart and persist
+# it in a temp file keyed by cwd hash + parent PID.
+# ---------------------------------------------------------------------------
+function Get-CwdHash {
+    $cwd = if ($script:HookCwd) { $script:HookCwd } else { "unknown" }
+    $md5 = [System.Security.Cryptography.MD5]::Create()
+    $bytes = [System.Text.Encoding]::UTF8.GetBytes($cwd)
+    $hash = $md5.ComputeHash($bytes)
+    ($hash | ForEach-Object { $_.ToString("x2") }) -join "" | ForEach-Object { $_.Substring(0, 8) }
+}
+
+function Get-SessionIdFile {
+    $hash = Get-CwdHash
+    Join-Path $env:TEMP "copilot-audit-${hash}-$PID"
+}
+
+function New-SessionId {
+    $datestamp = (Get-Date).ToUniversalTime().ToString("yyyyMMdd-HHmmss")
+    $hash = Get-CwdHash
+    $script:SessionId = "cli-${datestamp}-${hash}"
+    $idFile = Get-SessionIdFile
+    Set-Content -Path $idFile -Value $script:SessionId -NoNewline
+}
+
+function Read-SessionId {
+    $idFile = Get-SessionIdFile
+    if (Test-Path $idFile) {
+        $script:SessionId = (Get-Content $idFile -Raw).Trim()
+    } else {
+        Write-Error "No session ID file found at $idFile. Was sessionStart called?"
+        exit 2
+    }
+}
+
+function Remove-SessionIdFile {
+    $idFile = Get-SessionIdFile
+    if (Test-Path $idFile) { Remove-Item $idFile -Force }
 }
 
 # ---------------------------------------------------------------------------
@@ -135,12 +169,39 @@ function New-AuditCommit {
 }
 
 # ---------------------------------------------------------------------------
-# Full initialisation: read stdin, load config, set up branch
-# Call this at the top of every hook script.
+# Append a JSON line to the session transcript JSONL file
+# ---------------------------------------------------------------------------
+function Add-TranscriptEntry {
+    param([string]$JsonLine)
+    $sdir = Get-SessionDir
+    $transcriptPath = Join-Path $sdir "session-transcript.jsonl"
+    Add-Content -Path $transcriptPath -Value $JsonLine -Encoding UTF8
+}
+
+# ---------------------------------------------------------------------------
+# Full initialisation for sessionStart: read stdin, load config, generate
+# session ID, set up branch. Call this ONLY from session-start.ps1.
+# ---------------------------------------------------------------------------
+function Initialize-AuditSessionStart {
+    Read-HookInput
+    Read-Config
+    New-SessionId
+
+    if ($script:AuditMode -eq "per-session") {
+        Set-AuditBranch "session/$($script:SessionId)"
+    } else {
+        Set-AuditBranch $script:AuditBranch
+    }
+}
+
+# ---------------------------------------------------------------------------
+# Full initialisation for all hooks except sessionStart: read stdin, load
+# config, read session ID from temp file, set up branch.
 # ---------------------------------------------------------------------------
 function Initialize-Audit {
     Read-HookInput
     Read-Config
+    Read-SessionId
 
     if ($script:AuditMode -eq "per-session") {
         Set-AuditBranch "session/$($script:SessionId)"
