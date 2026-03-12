@@ -1,74 +1,63 @@
-# copilot-flight-recorder
+# copilot-flight-recorder — CLI Edition
 
-A full audit trail for your GitHub Copilot agent sessions. Every prompt, response, and file change is captured and committed linearly to a configurable external git repo — giving you a complete record you can review, search, or use to reproduce sessions exactly as they happened.
-
-Viewer dashboard at: [https://github.com/alxayo/copilot-flight-recorder-viewer](https://github.com/alxayo/copilot-flight-recorder-viewer)
+A full audit trail for your GitHub Copilot CLI agent sessions. Every prompt, tool invocation, file change, error, and session lifecycle event is captured and committed linearly to a configurable external git repo — giving you a complete record you can review, search, or use to reproduce sessions exactly as they happened.
 
 ## System Requirements
 
-- **VS Code** 1.99 or later with the **GitHub Copilot Chat** extension
+- **GitHub Copilot CLI** with hooks support
 - **Git** 2.20+ available on `PATH`
 - **jq** (Linux/macOS only) — [install guide](https://jqlang.github.io/jq/download/)
 - **PowerShell** 5.1+ (Windows) or **Bash** 4+ (Linux/macOS)
 - **Operating systems**: Windows, macOS, Linux
 
-## Coding Agent Compatibility
-
-This hook system uses the [VS Code Copilot Chat Hooks API](https://code.visualstudio.com/docs/copilot/customization/hooks), which relies on `.github/hooks/copilot-audit.json` and the specific hook events (`SessionStart`, `UserPromptSubmit`, `PostToolUse`, `Stop`) provided by the VS Code Copilot extension.
-
-### ✅ Supported
-
-| Agent | Notes |
-|---|---|
-| **GitHub Copilot Chat (VS Code)** | Fully supported. All four hook events are used for complete audit coverage: session lifecycle, prompt capture, file-change diffs, and transcript export. |
-
-### ⚠️ Partially Compatible (requires adaptation)
-
-| Agent | Why |
-|---|---|
-| **GitHub Copilot CLI (standalone agent)** | Has a [hooks system](https://docs.github.com/en/copilot/how-tos/copilot-cli/customize-copilot/use-hooks) that loads from `.github/hooks/` — the same directory this project uses — but it is **not a drop-in replacement**. Key incompatibilities: (1) event key names differ (`sessionStart` vs `SessionStart`, `userPromptSubmitted` vs `UserPromptSubmit`, `sessionEnd` vs `Stop`); (2) no `sessionId` field in any payload — session identity would need to be derived from `timestamp` + `cwd`; (3) `sessionEnd` carries no `transcript_path`, so transcript capture is unavailable; (4) file-editing tool names differ (`edit`, `create`, `bash` vs `create_file`, `replace_string_in_file`, etc.), breaking the `PostToolUse` filtering logic. A CLI-specific hooks config and updated scripts could adapt the core git/audit approach. |
-| **Anthropic Claude Code** | All four required events exist with identical names (`SessionStart`, `UserPromptSubmit`, `PostToolUse`, `Stop`), and `session_id` and `transcript_path` are common fields present in every event payload. However, it is **not a drop-in replacement**. Key incompatibilities: (1) hooks are configured in `.claude/settings.json` using a matcher-group structure with a `command` field, not in `.github/hooks/copilot-audit.json` with `bash`/`powershell` split keys; (2) all payload fields use snake_case (`session_id`, `tool_name`, `tool_input`) rather than camelCase — scripts must be updated accordingly; (3) file-editing tool names differ (`Write`, `Edit` vs `create_file`, `replace_string_in_file`, etc.), so the `PostToolUse` tool-name filter list must be rewritten; (4) no native PowerShell command path — a single `command` field runs in a shell, requiring a separate Windows adaptation strategy. The core git/audit logic could be adapted with a Claude Code-specific config and updated field parsing. |
-| **Cursor** | Has a [full hooks system](https://cursor.com/docs/hooks) configured in `.cursor/hooks.json`. All four conceptually equivalent events exist: `sessionStart`, `beforeSubmitPrompt`, `postToolUse`, and `stop`. Critically, `transcript_path` is a **common base field present in every hook payload**, and `conversation_id` serves as the stable session identifier. However, it is **not a drop-in replacement**. Key incompatibilities: (1) hooks are configured in `.cursor/hooks.json` with a single `command` field, not in `.github/hooks/copilot-audit.json` with `bash`/`powershell` split keys; (2) event names differ (`sessionStart` vs `SessionStart`, `beforeSubmitPrompt` vs `UserPromptSubmit`); (3) all payload fields use snake_case (`conversation_id`, `tool_name`, `tool_input`) — scripts must be updated accordingly; (4) file-editing tool names differ (`Write` vs `create_file`, `replace_string_in_file`, etc.), so the `postToolUse` filter list must be rewritten; (5) no native PowerShell command path — single `command` field requires a separate Windows adaptation strategy. The core git/audit approach is fully adaptable with a Cursor-specific config. |
-
-### ❌ Not Supported
-
-| Agent | Why |
-|---|---|
-| **GitHub Copilot CLI extension (`gh copilot`)** | This is a separate product from the standalone Copilot CLI — a `gh` CLI extension for natural language shell command translation, not an agentic coding session runner. It has no hooks system and does not load `.github/hooks/` configs. |
-| **Other editors/agents** | Any tool that does not implement the VS Code Copilot Chat Hooks specification will not work with this system. |
-
 ## How It Works
 
-Four [VS Code agent hooks](https://code.visualstudio.com/docs/copilot/customization/hooks) fire during a Copilot chat session:
+Six [Copilot CLI hooks](https://docs.github.com/en/copilot/how-tos/copilot-cli/customize-copilot/use-hooks) fire during an agent session:
 
 | Hook Event | What It Does |
 |---|---|
-| **SessionStart** | Creates the session directory in the audit repo, commits a `000-session-start.md` with metadata |
-| **UserPromptSubmit** | Writes the user's prompt to `NNN-prompt.md`, commits it |
-| **PostToolUse** | After a file-editing tool runs, captures `git diff HEAD` from the workspace and commits a `NNN-changes.patch` |
-| **Stop** | Copies the full transcript (via `transcript_path`) to `transcript.json`, commits it |
+| **sessionStart** | Creates session directory, generates synthesized session ID, captures initial prompt |
+| **userPromptSubmitted** | Writes user prompt to `NNN-prompt.md`, appends to transcript |
+| **preToolUse** | Logs tool invocation intent to `NNN-tool-attempt.json` before execution |
+| **postToolUse** | After file-editing tools run, captures `git diff HEAD`, writes `NNN-changes.patch` + `NNN-tool-result.json` |
+| **errorOccurred** | Logs error name, message, and stack trace to `NNN-error.json` |
+| **sessionEnd** | Writes session summary, commits reconstructed transcript, cleanup |
 
-Each file gets its own commit with a descriptive message like `[<sessionId>] prompt: Fix the login bug…`.
+Each file gets its own commit with a descriptive message like `[cli-20260312-143022-a1b2c3d4] prompt: Fix the login bug…`.
+
+### Session ID Synthesis
+
+The Copilot CLI does not provide a session ID. Instead, one is synthesized at session start as `cli-YYYYMMDD-HHMMSS-<cwd-hash>` and persisted in a temp file for subsequent hooks to read.
+
+### Transcript Reconstruction
+
+The CLI does not provide a `transcript_path`. Instead, a `session-transcript.jsonl` file is built incrementally by each hook, appending one JSON line per event. The final transcript is committed at session end.
 
 ### Branching Modes
 
-- **Flat** (default): All commits go to a single branch (default `main`). Commit messages include the session ID for filtering.
-- **Per-session**: Each chat session gets its own branch named `session/<sessionId>`.
+- **Flat** (default): All commits go to a single branch (default `main`). Session ID in commit messages for filtering.
+- **Per-session**: Each session gets its own `session/<sessionId>` branch.
 
 ### Audit Repo Structure
 
 ```
 <audit-repo>/
 └── sessions/
-    └── <sessionId>/
+    └── cli-20260312-143022-a1b2c3d4/
         ├── 001-session-start.md
         ├── 002-prompt.md
-        ├── 003-changes.patch
-        ├── 003-changes.meta.json
-        ├── 004-prompt.md
-        ├── 005-changes.patch
-        ├── 005-changes.meta.json
-        └── transcript.json
+        ├── 003-tool-attempt.json
+        ├── 004-changes.patch
+        ├── 004-changes.meta.json
+        ├── 005-tool-result.json
+        ├── 006-prompt.md
+        ├── 007-tool-attempt.json
+        ├── 008-changes.patch
+        ├── 008-changes.meta.json
+        ├── 009-tool-result.json
+        ├── 010-error.json
+        ├── 011-session-end.md
+        └── session-transcript.jsonl
 ```
 
 ## Setup
@@ -91,9 +80,7 @@ Each file gets its own commit with a descriptive message like `[<sessionId>] pro
    ```
    Alternatively, set environment variables directly (they take priority over `.env`).
 
-4. **Open the workspace** in VS Code. The hooks in `.github/hooks/copilot-audit.json` are loaded automatically.
-
-5. **Start a Copilot chat session.** Check the **GitHub Copilot Chat Hooks** output channel to verify hooks are executing.
+4. **Run Copilot CLI** from the workspace directory. The hooks in `.github/hooks/copilot-cli-audit.json` are loaded automatically.
 
 ## Same-Repo Audit with Git Worktrees
 
@@ -105,26 +92,18 @@ The hooks need to `git checkout` the audit branch and commit files to it. If the
 
 ### One-time setup
 
-Run these commands from your project root (e.g. `C:\code\myproject`):
+Run these commands from your project root:
 
-```powershell
+```bash
 # 1. Create an orphan "audit" branch with no files (keeps history separate from code)
 git checkout --orphan audit
 git rm -rf .
 git commit --allow-empty -m "audit: init"
-git checkout main          # switch back to your working branch
+git checkout main
 
-# 2. Create a worktree directory so the audit branch has its own checkout
-#    Place it next to (not inside) your project directory
+# 2. Create a worktree directory alongside your project
 git worktree add ../myproject-audit audit
 ```
-
-On Linux/macOS the commands are identical — just adjust the path style:
-```bash
-git worktree add ../myproject-audit audit
-```
-
-This creates `../myproject-audit/` checked out on the `audit` branch.
 
 ### Configure the `.env`
 
@@ -132,15 +111,10 @@ Point `COPILOT_AUDIT_REPO` at the worktree directory:
 
 ```ini
 # .env (in your project root)
-COPILOT_AUDIT_REPO=C:\code\myproject-audit   # absolute path to the worktree
+COPILOT_AUDIT_REPO=/path/to/myproject-audit
 COPILOT_AUDIT_BRANCH=audit
 COPILOT_AUDIT_MODE=flat
 COPILOT_AUDIT_PUSH=false
-```
-
-On Linux/macOS:
-```ini
-COPILOT_AUDIT_REPO=/home/you/code/myproject-audit
 ```
 
 ### How it works under the hood
@@ -154,11 +128,12 @@ myproject/                  ← your normal workspace (branch: main)
 
 myproject-audit/            ← worktree checkout (branch: audit)
 ├── sessions/
-│   └── <sessionId>/
+│   └── cli-20260312-143022-a1b2c3d4/
 │       ├── 001-session-start.md
 │       ├── 002-prompt.md
-│       ├── 003-changes.patch
-│       └── transcript.json
+│       ├── 003-tool-attempt.json
+│       ├── 004-changes.patch
+│       └── session-transcript.jsonl
 ```
 
 - Both directories share the **same `.git` database**, same remotes, same refs.
@@ -167,23 +142,19 @@ myproject-audit/            ← worktree checkout (branch: audit)
 
 ### Pushing the audit branch
 
-You can push the `audit` branch from **either** directory at any time, regardless of which branch is checked out in the other:
-
-```powershell
+```bash
 # From your main workspace
 git push origin audit
 
 # Or from the worktree
-git -C C:\code\myproject-audit push origin audit
+git -C /path/to/myproject-audit push origin audit
 ```
 
-To push automatically after each session, set `COPILOT_AUDIT_PUSH=true` in your `.env`.
+To push automatically after each session, set `COPILOT_AUDIT_PUSH=true`.
 
 ### Viewing audit history from your main workspace
 
-Since it's the same repo, all standard git commands work:
-
-```powershell
+```bash
 # See audit commits
 git log audit --oneline
 
@@ -194,22 +165,19 @@ git show audit:sessions/<sessionId>/001-session-start.md
 git diff audit~5..audit
 ```
 
-### Removing the worktree (keeping the branch)
+### Removing the worktree
 
-If you no longer need the separate checkout directory:
-
-```powershell
+```bash
 git worktree remove ../myproject-audit
 ```
 
-The `audit` branch and all its commits remain in the repo. You can recreate the worktree at any time with `git worktree add`.
+The `audit` branch and all its commits remain in the repo.
 
 ### Important notes
 
-- **Don't nest the worktree inside your project** — place it alongside (e.g. `../myproject-audit`) so that your workspace's `.gitignore` and file watchers don't interfere with it.
-- The `audit` branch is an **orphan branch** with its own independent history. It shares no commits with `main` and merging it is neither required nor recommended.
-- If you use **per-session mode** (`COPILOT_AUDIT_MODE=per-session`), each session creates a `session/<id>` branch. These also branch off within the same repo and are visible everywhere.
-- **Concurrent sessions**: If multiple VS Code windows use the same worktree, commits may interleave. Use per-session mode or separate worktrees per workspace to avoid this.
+- **Don't nest the worktree inside your project** — place it alongside so file watchers don't interfere.
+- The `audit` branch is an **orphan branch** with independent history.
+- **Concurrent sessions**: Use per-session mode or separate worktrees to avoid commit interleaving.
 
 ## Configuration
 
@@ -222,59 +190,37 @@ All settings can be provided as environment variables or in a `.env` file at the
 | `COPILOT_AUDIT_BRANCH` | Branch name for flat mode | `main` |
 | `COPILOT_AUDIT_PUSH` | Auto-push after session ends (`true`/`false`) | `false` |
 
-## File-Editing Tools Tracked
+## Tools Tracked
 
-The `PostToolUse` hook only captures diffs when these VS Code tools are used:
+The `postToolUse` hook captures diffs and tool results for these CLI tools:
 
-- `create_file`
-- `replace_string_in_file`
-- `multi_replace_string_in_file`
-- `edit_notebook_file`
-- `insert_text_in_file`
-- `delete_file`
+- `edit` — file editing
+- `create` — file creation
+- `bash` — shell command execution (patch skipped if diff is empty)
 
-All other tools (terminal, search, etc.) are silently skipped.
+All other tools are logged in the transcript but don't generate `.patch` files.
 
 ## Cross-Referencing Audit Data with Source Commits
 
-Each `PostToolUse` event produces a `.meta.json` sidecar file alongside the `.patch` file, capturing workspace git state at the time of the edit:
+Each `postToolUse` event produces a `.meta.json` sidecar alongside the `.patch` file:
 
 ```json
 {
-  "sessionId": "a1b2c3d4",
+  "sessionId": "cli-20260312-143022-a1b2c3d4",
   "filePath": "src/handler.ts",
   "workspaceHead": "abc123def456",
   "fileContentHash": "789abc012def",
-  "timestamp": "2026-03-11T10:30:00.000Z",
-  "toolName": "replace_string_in_file",
-  "patchFile": "003-changes.patch"
+  "timestamp": 1741862100000,
+  "toolName": "edit",
+  "patchFile": "004-changes.patch"
 }
-```
-
-| Field | Description |
-|---|---|
-| `workspaceHead` | `git rev-parse HEAD` of the source repo at edit time — the baseline commit the `.patch` diff is relative to |
-| `fileContentHash` | `git hash-object` of the file after the edit — a content-addressable hash even without a commit. `null` for file deletions |
-| `patchFile` | Name of the companion `.patch` file containing the actual diff |
-
-### How to correlate with source commits
-
-Copilot edits files in the working tree without committing. When the user eventually commits (e.g. `xyz789`), its parent is the `workspaceHead` recorded in the metadata. To find all Copilot-driven edits that became part of a commit:
-
-```bash
-# Find the parent of a source commit
-PARENT=$(git rev-parse xyz789~1)
-
-# Find all audit metadata referencing that baseline
-jq -s "[.[] | select(.workspaceHead == \"$PARENT\")]" \
-  sessions/*/???-changes.meta.json
 ```
 
 ### Useful queries
 
 ```bash
 # All files changed by a specific session
-jq -s '[.[] | select(.sessionId == "a1b2c3d4") | .filePath]' \
+jq -s '[.[] | select(.sessionId == "cli-20260312-143022-a1b2c3d4") | .filePath]' \
   sessions/*/???-changes.meta.json
 
 # All sessions that touched a specific file
@@ -288,62 +234,44 @@ jq -s '[.[] | {sessionId, filePath, workspaceHead, toolName}]' \
 
 ## Verification
 
-1. Set `COPILOT_AUDIT_REPO` to a test git repo and open the workspace in VS Code.
-2. Start a chat session → check for `001-session-start.md` in the audit repo.
-3. Send a prompt → check for `002-prompt.md`.
-4. Ask Copilot to edit a file → check for `003-changes.patch`.
-5. End the session → check for `transcript.json`.
-6. For per-session mode, set `COPILOT_AUDIT_MODE=per-session` and verify a `session/<id>` branch is created.
+1. Set `COPILOT_AUDIT_REPO` to a test git repo.
+2. Run `copilot -p "Show git status"` from the workspace.
+3. Check for `001-session-start.md` in the audit repo.
+4. Send a prompt → check for `NNN-prompt.md`.
+5. Ask the agent to edit a file → check for `NNN-changes.patch` + `NNN-tool-result.json`.
+6. Check for `NNN-tool-attempt.json` (pre-tool logging).
+7. End the session → check for `NNN-session-end.md` and `session-transcript.jsonl`.
+8. For per-session mode, set `COPILOT_AUDIT_MODE=per-session` and verify a `session/<id>` branch is created.
 
 ## Security Notes
 
 - The `.env` file is git-ignored to prevent leaking local paths.
-- Hook scripts run with the same permissions as VS Code. Review them before use in shared repos.
-- Consider using `chat.tools.edits.autoApprove` to prevent the agent from modifying hook scripts during a session.
+- Hook scripts run with the same permissions as the Copilot CLI. Review them before use.
 - No secrets are stored in scripts — all config flows through environment variables.
+- The `preToolUse` hook can be extended with deny logic for policy enforcement.
 
 ## Limitations
 
-- `git diff HEAD` captures **cumulative** workspace changes, not per-tool incremental diffs. If you make manual edits between tool uses, those appear in the patch too.
-- Brand-new untracked files (from `create_file`) are captured as raw content rather than unified diff format.
-- No file-locking: concurrent sessions targeting the same audit repo could interleave commits. Use per-session mode or separate audit repos to avoid this.
+- `git diff HEAD` captures **cumulative** workspace changes, not per-tool incremental diffs.
+- Brand-new untracked files (from `create`) are captured as raw content rather than unified diff format.
+- No file-locking: concurrent sessions targeting the same audit repo could interleave commits. Use per-session mode to avoid this.
+- LLM reasoning text between tool calls is **not captured** — the CLI provides no hook for model-generated text.
+- The reconstructed transcript is missing LLM reasoning — it only contains events the hooks observe.
 
 ## Plugin Installation
-
-copilot-flight-recorder is packaged as a [VS Code Agent Plugin](https://code.visualstudio.com/docs/copilot/customization/agent-plugins) and can be installed in several ways.
-
-> **Prerequisite**: Enable agent plugins in VS Code with `"chat.plugins.enabled": true`.
 
 ### Option 1: Install from a release archive
 
 1. Download the latest `.zip` or `.tar.gz` from [Releases](https://github.com/alxayo/copilot-flight-recorder/releases).
-2. Extract to a directory (e.g. `~/.copilot-plugins/copilot-flight-recorder`).
-3. Add to your VS Code `settings.json`:
-   ```json
-   "chat.plugins.paths": {
-     "/path/to/copilot-flight-recorder": true
-   }
-   ```
+2. Extract to your workspace's `.github` directory.
 
 ### Option 2: Install from git (clone)
 
 ```bash
-git clone https://github.com/alxayo/copilot-flight-recorder.git ~/.copilot-plugins/copilot-flight-recorder
+git clone -b copilot-cli https://github.com/alxayo/copilot-flight-recorder.git ~/.copilot-plugins/copilot-flight-recorder
 ```
 
-Then add the path to `chat.plugins.paths` as shown above.
-
-### Option 3: Use as a marketplace source
-
-Add the repo directly as a plugin marketplace in your VS Code `settings.json`:
-
-```json
-"chat.plugins.marketplaces": ["alxayo/copilot-flight-recorder"]
-```
-
-VS Code will discover and offer the plugin for installation automatically.
-
-### Option 4: Use the install script
+### Option 3: Use the install script
 
 From a cloned copy of this repo:
 
@@ -354,8 +282,6 @@ From a cloned copy of this repo:
 # Windows (PowerShell)
 .\scripts\install-plugin.ps1
 ```
-
-The script copies the plugin to `~/.copilot-plugins/copilot-flight-recorder` and prints the `settings.json` snippet to activate it.
 
 ## Building the Plugin Package
 
@@ -369,7 +295,7 @@ bash scripts/build-plugin.sh
 powershell -ExecutionPolicy Bypass -File scripts\build-plugin.ps1
 ```
 
-This produces `dist/copilot-flight-recorder-<version>.zip` and `.tar.gz` archives ready for distribution.
+This produces `dist/copilot-flight-recorder-<version>.zip` and `.tar.gz` archives.
 
 ### CI/CD
 
