@@ -26,15 +26,19 @@ jobs:
           required_files=(
             ".github/plugin/plugin.json"
             ".github/plugin/README.md"
-            ".github/hooks/copilot-audit.json"
+            ".github/hooks/copilot-cli-audit.json"
             ".github/hooks/scripts/audit-common.sh"
             ".github/hooks/scripts/audit-common.ps1"
             ".github/hooks/scripts/session-start.sh"
             ".github/hooks/scripts/session-start.ps1"
             ".github/hooks/scripts/commit-prompt.sh"
             ".github/hooks/scripts/commit-prompt.ps1"
+            ".github/hooks/scripts/pre-tool-use.sh"
+            ".github/hooks/scripts/pre-tool-use.ps1"
             ".github/hooks/scripts/commit-changes.sh"
             ".github/hooks/scripts/commit-changes.ps1"
+            ".github/hooks/scripts/log-error.sh"
+            ".github/hooks/scripts/log-error.ps1"
             ".github/hooks/scripts/finalize-session.sh"
             ".github/hooks/scripts/finalize-session.ps1"
           )
@@ -73,8 +77,8 @@ jobs:
           fi
           echo "Plugin: $name v$version"
 
-      - name: Validate copilot-audit.json is valid JSON
-        run: jq empty .github/hooks/copilot-audit.json
+      - name: Validate copilot-cli-audit.json is valid JSON
+        run: jq empty .github/hooks/copilot-cli-audit.json
 
       - name: Check shell scripts have valid shebang
         run: |
@@ -146,24 +150,12 @@ jobs:
 
             ### Option 1: Download and install locally
             1. Download the `.zip` (Windows) or `.tar.gz` (Linux/macOS) archive below
-            2. Extract it to a directory of your choice (e.g. `~/.copilot-plugins/copilot-flight-recorder`)
-            3. Add to your VS Code `settings.json`:
-               ```json
-               "chat.plugins.paths": {
-                 "/path/to/copilot-flight-recorder": true
-               }
-               ```
+            2. Extract it to your workspace's `.github` directory
+            3. Set `COPILOT_AUDIT_REPO` environment variable or create `.env` in workspace root
 
             ### Option 2: Install from git
             ```bash
-            git clone https://github.com/${{ github.repository }}.git ~/.copilot-plugins/copilot-flight-recorder
-            ```
-            Then add the path to `chat.plugins.paths` as above.
-
-            ### Option 3: Use as marketplace source
-            Add to your VS Code `settings.json`:
-            ```json
-            "chat.plugins.marketplaces": ["${{ github.repository }}"]
+            git clone -b copilot-cli https://github.com/${{ github.repository }}.git ~/.copilot-plugins/copilot-flight-recorder
             ```
 
             See [README](https://github.com/${{ github.repository }}#readme) for full setup instructions.

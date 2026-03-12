@@ -1,4 +1,4 @@
-# install-plugin.ps1 — Install copilot-flight-recorder plugin locally for VS Code
+# install-plugin.ps1 — Install copilot-flight-recorder plugin locally for Copilot CLI
 #
 # Usage:
 #   .\scripts\install-plugin.ps1 [-Target <DIR>]
@@ -28,7 +28,7 @@ Copy-Item (Join-Path $RepoRoot ".github\plugin\plugin.json") (Join-Path $Target 
 Copy-Item (Join-Path $RepoRoot ".github\plugin\README.md")   (Join-Path $Target ".github\plugin\README.md")   -Force
 
 # Copy hooks config and scripts
-Copy-Item (Join-Path $RepoRoot ".github\hooks\copilot-audit.json")  (Join-Path $Target ".github\hooks\copilot-audit.json") -Force
+Copy-Item (Join-Path $RepoRoot ".github\hooks\copilot-cli-audit.json")  (Join-Path $Target ".github\hooks\copilot-cli-audit.json") -Force
 Copy-Item (Join-Path $RepoRoot ".github\hooks\scripts\*.sh")        (Join-Path $Target ".github\hooks\scripts\")           -Force
 Copy-Item (Join-Path $RepoRoot ".github\hooks\scripts\*.ps1")       (Join-Path $Target ".github\hooks\scripts\")           -Force
 
@@ -39,15 +39,8 @@ Copy-Item (Join-Path $RepoRoot "README.md")    (Join-Path $Target "README.md")  
 Write-Host ""
 Write-Host "Plugin installed to: $Target"
 Write-Host ""
-Write-Host "To activate it, add the following to your VS Code settings.json:"
-Write-Host ""
-Write-Host "  `"chat.plugins.paths`": {"
-Write-Host "    `"$($Target -replace '\\', '\\')`": true"
-Write-Host "  }"
-Write-Host ""
-Write-Host "Or open VS Code and run the command:"
-Write-Host "  Preferences: Open User Settings (JSON)"
-Write-Host "then add the chat.plugins.paths entry above."
+Write-Host "The plugin hooks will be automatically discovered by Copilot CLI"
+Write-Host "when running from a workspace that contains the .github/hooks directory."
 Write-Host ""
 Write-Host "Don't forget to configure your audit repo:"
 Write-Host "  `$env:COPILOT_AUDIT_REPO = 'C:\path\to\your\audit-repo'"

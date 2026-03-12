@@ -20,6 +20,6 @@
     "flight-recorder"
   ],
   "hooks": [
-    "./hooks/copilot-audit.json"
+    "./hooks/copilot-cli-audit.json"
   ]
 }

@@ -1,27 +1,29 @@
 ---
-name: "Copilot Flight Recorder"
-description: "A full audit trail for GitHub Copilot agent sessions. Captures every prompt, response, and file change, committing them linearly to a configurable external git repo."
-tags: ["audit", "logging", "compliance", "hooks", "session-recording"]
+name: "Copilot Flight Recorder (CLI Edition)"
+description: "A full audit trail for GitHub Copilot CLI agent sessions. Captures every prompt, tool invocation, file change, error, and session lifecycle event, committing them linearly to a configurable external git repo."
+tags: ["audit", "logging", "compliance", "hooks", "session-recording", "copilot-cli"]
 ---
 
-# Copilot Flight Recorder
+# Copilot Flight Recorder — CLI Edition
 
-A VS Code Copilot agent plugin that captures a complete audit trail of every chat session — prompts, file changes, and transcripts — committed linearly to a separate git repo.
+A Copilot CLI hooks plugin that captures a complete audit trail of every agent session — prompts, tool invocations, file changes, errors, and reconstructed transcripts — committed linearly to a separate git repo.
 
 ## What This Plugin Provides
 
-Four lifecycle hooks that fire automatically during Copilot Chat sessions:
+Six lifecycle hooks that fire automatically during Copilot CLI agent sessions:
 
 | Hook Event | What It Does |
 |---|---|
-| **SessionStart** | Creates a session directory in the audit repo, commits metadata |
-| **UserPromptSubmit** | Captures each user prompt and commits it |
-| **PostToolUse** | After file-editing tools run, captures `git diff` and commits the patch |
-| **Stop** | Copies the full session transcript and commits it |
+| **sessionStart** | Creates session directory, generates session ID, captures initial prompt |
+| **userPromptSubmitted** | Captures each user prompt and commits it |
+| **preToolUse** | Logs tool invocation intent before execution (with optional deny) |
+| **postToolUse** | After file-editing tools run, captures `git diff`, tool result, and commits |
+| **errorOccurred** | Logs error name, message, and stack trace |
+| **sessionEnd** | Writes session summary, commits reconstructed transcript, cleanup |
 
 ## Requirements
 
-- **VS Code** 1.99+ with GitHub Copilot Chat extension
+- **GitHub Copilot CLI** with hooks support
 - **Git** 2.20+ on PATH
 - **jq** (Linux/macOS only)
 - **PowerShell** 5.1+ (Windows) or **Bash** 4+ (Linux/macOS)

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# install-plugin.sh — Install copilot-flight-recorder plugin locally for VS Code
+# install-plugin.sh — Install copilot-flight-recorder plugin locally for Copilot CLI
 #
 # Usage:
 #   ./scripts/install-plugin.sh [--target DIR]
@@ -33,7 +33,7 @@ cp "$REPO_ROOT/.github/plugin/plugin.json" "$TARGET_DIR/.github/plugin/plugin.js
 cp "$REPO_ROOT/.github/plugin/README.md"   "$TARGET_DIR/.github/plugin/README.md"
 
 # Copy hooks config and scripts
-cp "$REPO_ROOT/.github/hooks/copilot-audit.json"  "$TARGET_DIR/.github/hooks/copilot-audit.json"
+cp "$REPO_ROOT/.github/hooks/copilot-cli-audit.json"  "$TARGET_DIR/.github/hooks/copilot-cli-audit.json"
 cp "$REPO_ROOT/.github/hooks/scripts/"*.sh         "$TARGET_DIR/.github/hooks/scripts/"
 cp "$REPO_ROOT/.github/hooks/scripts/"*.ps1        "$TARGET_DIR/.github/hooks/scripts/"
 
@@ -47,15 +47,8 @@ chmod +x "$TARGET_DIR/.github/hooks/scripts/"*.sh
 echo ""
 echo "Plugin installed to: $TARGET_DIR"
 echo ""
-echo "To activate it, add the following to your VS Code settings.json:"
-echo ""
-echo '  "chat.plugins.paths": {'
-echo "    \"$TARGET_DIR\": true"
-echo '  }'
-echo ""
-echo "Or open VS Code and run the command:"
-echo "  Preferences: Open User Settings (JSON)"
-echo "then add the chat.plugins.paths entry above."
+echo "The plugin hooks will be automatically discovered by Copilot CLI"
+echo "when running from a workspace that contains the .github/hooks directory."
 echo ""
 echo "Don't forget to configure your audit repo:"
 echo "  export COPILOT_AUDIT_REPO=/path/to/your/audit-repo"

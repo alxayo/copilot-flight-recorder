@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# build-plugin.sh — Package copilot-flight-recorder as a distributable VS Code agent plugin
+# build-plugin.sh — Package copilot-flight-recorder as a distributable Copilot CLI agent plugin
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -29,7 +29,7 @@ cp "$REPO_ROOT/.github/plugin/plugin.json" "$STAGE_DIR/.github/plugin/plugin.jso
 cp "$REPO_ROOT/.github/plugin/README.md"   "$STAGE_DIR/.github/plugin/README.md"
 
 # ---- Copy hook configuration ----
-cp "$REPO_ROOT/.github/hooks/copilot-audit.json" "$STAGE_DIR/.github/hooks/copilot-audit.json"
+cp "$REPO_ROOT/.github/hooks/copilot-cli-audit.json" "$STAGE_DIR/.github/hooks/copilot-cli-audit.json"
 
 # ---- Copy all hook scripts ----
 cp "$REPO_ROOT/.github/hooks/scripts/"*.sh  "$STAGE_DIR/.github/hooks/scripts/"
@@ -58,5 +58,4 @@ echo "Plugin package built successfully:"
 echo "  $BUILD_DIR/${PLUGIN_NAME}-${PLUGIN_VERSION}.tar.gz"
 echo "  $BUILD_DIR/${PLUGIN_NAME}-${PLUGIN_VERSION}.zip"
 echo ""
-echo "Install locally by extracting and pointing VS Code to the directory:"
-echo '  "chat.plugins.paths": { "/path/to/'"$PLUGIN_NAME"'": true }'
+echo "Install locally by extracting to your workspace .github directory."

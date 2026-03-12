@@ -1,4 +1,4 @@
-# build-plugin.ps1 — Package copilot-flight-recorder as a distributable VS Code agent plugin
+# build-plugin.ps1 — Package copilot-flight-recorder as a distributable Copilot CLI agent plugin
 $ErrorActionPreference = "Stop"
 
 $ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Definition
@@ -24,7 +24,7 @@ Copy-Item (Join-Path $RepoRoot ".github\plugin\plugin.json") (Join-Path $StageDi
 Copy-Item (Join-Path $RepoRoot ".github\plugin\README.md")   (Join-Path $StageDir ".github\plugin\README.md")
 
 # ---- Copy hook configuration ----
-Copy-Item (Join-Path $RepoRoot ".github\hooks\copilot-audit.json") (Join-Path $StageDir ".github\hooks\copilot-audit.json")
+Copy-Item (Join-Path $RepoRoot ".github\hooks\copilot-cli-audit.json") (Join-Path $StageDir ".github\hooks\copilot-cli-audit.json")
 
 # ---- Copy all hook scripts ----
 Copy-Item (Join-Path $RepoRoot ".github\hooks\scripts\*.sh")  (Join-Path $StageDir ".github\hooks\scripts\") -Force
@@ -45,5 +45,4 @@ Write-Host ""
 Write-Host "Plugin package built successfully:"
 Write-Host "  $ZipPath"
 Write-Host ""
-Write-Host "Install locally by extracting and adding to VS Code settings:"
-Write-Host "  `"chat.plugins.paths`": { `"C:\\path\\to\\$PluginName`": true }"
+Write-Host "Install locally by extracting to your workspace .github directory."
