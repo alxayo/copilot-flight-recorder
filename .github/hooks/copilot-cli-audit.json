@@ -1,0 +1,59 @@
+{
+  "version": 1,
+  "hooks": {
+    "sessionStart": [
+      {
+        "type": "command",
+        "bash": "./scripts/session-start.sh",
+        "powershell": "./scripts/session-start.ps1",
+        "cwd": ".github/hooks",
+        "timeoutSec": 30
+      }
+    ],
+    "userPromptSubmitted": [
+      {
+        "type": "command",
+        "bash": "./scripts/commit-prompt.sh",
+        "powershell": "./scripts/commit-prompt.ps1",
+        "cwd": ".github/hooks",
+        "timeoutSec": 15
+      }
+    ],
+    "preToolUse": [
+      {
+        "type": "command",
+        "bash": "./scripts/pre-tool-use.sh",
+        "powershell": "./scripts/pre-tool-use.ps1",
+        "cwd": ".github/hooks",
+        "timeoutSec": 15
+      }
+    ],
+    "postToolUse": [
+      {
+        "type": "command",
+        "bash": "./scripts/commit-changes.sh",
+        "powershell": "./scripts/commit-changes.ps1",
+        "cwd": ".github/hooks",
+        "timeoutSec": 15
+      }
+    ],
+    "sessionEnd": [
+      {
+        "type": "command",
+        "bash": "./scripts/finalize-session.sh",
+        "powershell": "./scripts/finalize-session.ps1",
+        "cwd": ".github/hooks",
+        "timeoutSec": 30
+      }
+    ],
+    "errorOccurred": [
+      {
+        "type": "command",
+        "bash": "./scripts/log-error.sh",
+        "powershell": "./scripts/log-error.ps1",
+        "cwd": ".github/hooks",
+        "timeoutSec": 10
+      }
+    ]
+  }
+}
