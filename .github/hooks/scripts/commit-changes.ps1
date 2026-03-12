@@ -1,28 +1,40 @@
-# PostToolUse hook — capture workspace diff after file-editing tools
+# postToolUse hook — capture workspace diff and tool results after file-editing tools
 $ErrorActionPreference = "Stop"
 . "$PSScriptRoot\audit-common.ps1"
 
 Initialize-Audit
 
-$toolName = Get-JsonField "tool_name"
+$toolName = Get-JsonField "toolName"
+$toolArgsRaw = Get-JsonField "toolArgs"
+$toolResult = try { $script:HookInput.toolResult } catch { $null }
+$resultType = if ($toolResult) { $toolResult.resultType } else { "" }
+$resultText = if ($toolResult) { $toolResult.textResultForLlm } else { "" }
 
-# Only act on file-editing tools; silently skip everything else.
-$fileEditTools = @(
-    "create_file"
-    "replace_string_in_file"
-    "multi_replace_string_in_file"
-    "edit_notebook_file"
-    "insert_text_in_file"
-    "delete_file"
-)
+# File-editing tools that should trigger diff capture
+$fileEditTools = @("edit", "create", "bash")
 
-if ($toolName -notin $fileEditTools) { exit 0 }
+if ($toolName -notin $fileEditTools) {
+    # Non-editing tools: still log tool result to transcript
+    $transcriptEntry = [PSCustomObject]@{
+        type             = "toolResult"
+        toolName         = $toolName
+        resultType       = $resultType
+        textResultForLlm = $resultText
+        timestamp        = $script:Timestamp
+    } | ConvertTo-Json -Compress
+    Add-TranscriptEntry $transcriptEntry
+    exit 0
+}
 
-# Determine the affected file path from tool_input
-$affectedFile = if ($toolName -eq "multi_replace_string_in_file") {
-    try { $script:HookInput.tool_input.replacements[0].filePath } catch { $null }
-} else {
-    try { $script:HookInput.tool_input.filePath } catch { $null }
+# Parse toolArgs to extract file path
+$affectedFile = $null
+if ($toolArgsRaw) {
+    try {
+        $parsedArgs = $toolArgsRaw | ConvertFrom-Json
+        $affectedFile = if ($parsedArgs.path) { $parsedArgs.path } elseif ($parsedArgs.filePath) { $parsedArgs.filePath } else { $null }
+    } catch {
+        $affectedFile = $null
+    }
 }
 
 # Capture workspace diff (tracked files: staged + unstaged vs HEAD)
@@ -36,25 +48,66 @@ if ($script:HookCwd -and (Test-Path (Join-Path $script:HookCwd ".git"))) {
     elseif ($diffLines) { $diff = $diffLines }
 }
 
-# For new/untracked files (e.g. create_file), capture content directly
+# For new/untracked files (e.g. create), capture content directly
 if (-not $diff -and $affectedFile -and (Test-Path $affectedFile)) {
     $content = Get-Content $affectedFile -Raw
     $diff = "new file: $affectedFile`n---`n$content"
 }
 
-# Nothing changed — skip
-if (-not $diff) { exit 0 }
-
 $sdir = Get-SessionDir
 New-Item -ItemType Directory -Path $sdir -Force | Out-Null
 
-$counter      = Get-NextCounter
-$fileName     = "${counter}-changes.patch"
-$metaFileName = "${counter}-changes.meta.json"
-$destPath     = Join-Path $sdir $fileName
-$metaDestPath = Join-Path $sdir $metaFileName
+# For bash tool, skip patch if diff is empty (read-only command)
+if ($toolName -eq "bash" -and -not $diff) {
+    $counter        = Get-NextCounter
+    $resultFileName = "${counter}-tool-result.json"
+    $resultDestPath = Join-Path $sdir $resultFileName
 
-Set-Content -Path $destPath -Value $diff -Encoding UTF8
+    $resultObj = [PSCustomObject]@{
+        sessionId       = $script:SessionId
+        toolName        = $toolName
+        resultType      = $resultType
+        textResultForLlm = $resultText
+        timestamp       = $script:Timestamp
+    }
+    $resultObj | ConvertTo-Json -Depth 4 | Set-Content -Path $resultDestPath -Encoding UTF8
+
+    $transcriptEntry = [PSCustomObject]@{
+        type             = "toolResult"
+        toolName         = $toolName
+        resultType       = $resultType
+        textResultForLlm = $resultText
+        timestamp        = $script:Timestamp
+    } | ConvertTo-Json -Compress
+    Add-TranscriptEntry $transcriptEntry
+
+    New-AuditCommit -FilePath "sessions/$($script:SessionId)/$resultFileName" `
+      -Message "[$($script:SessionId)] tool result: $toolName (no changes)"
+    exit 0
+}
+
+# Nothing changed and not bash — skip but log transcript
+if (-not $diff) {
+    $transcriptEntry = [PSCustomObject]@{
+        type             = "toolResult"
+        toolName         = $toolName
+        resultType       = $resultType
+        textResultForLlm = $resultText
+        timestamp        = $script:Timestamp
+    } | ConvertTo-Json -Compress
+    Add-TranscriptEntry $transcriptEntry
+    exit 0
+}
+
+$counter        = Get-NextCounter
+$patchFileName  = "${counter}-changes.patch"
+$metaFileName   = "${counter}-changes.meta.json"
+$resultFileName = "${counter}-tool-result.json"
+$patchDestPath  = Join-Path $sdir $patchFileName
+$metaDestPath   = Join-Path $sdir $metaFileName
+$resultDestPath = Join-Path $sdir $resultFileName
+
+Set-Content -Path $patchDestPath -Value $diff -Encoding UTF8
 
 # Build metadata sidecar for cross-referencing audit repo ↔ source repo
 $workspaceHead   = ""
@@ -75,12 +128,33 @@ $meta = [PSCustomObject]@{
     fileContentHash = $fileContentHash
     timestamp       = $script:Timestamp
     toolName        = $toolName
-    patchFile       = $fileName
+    patchFile       = $patchFileName
 }
 $meta | ConvertTo-Json -Depth 4 | Set-Content -Path $metaDestPath -Encoding UTF8
+
+# Write tool result
+$resultObj = [PSCustomObject]@{
+    sessionId        = $script:SessionId
+    toolName         = $toolName
+    resultType       = $resultType
+    textResultForLlm = $resultText
+    timestamp        = $script:Timestamp
+}
+$resultObj | ConvertTo-Json -Depth 4 | Set-Content -Path $resultDestPath -Encoding UTF8
+
+# Append tool result to transcript
+$transcriptEntry = [PSCustomObject]@{
+    type             = "toolResult"
+    toolName         = $toolName
+    resultType       = $resultType
+    textResultForLlm = $resultText
+    timestamp        = $script:Timestamp
+} | ConvertTo-Json -Compress
+Add-TranscriptEntry $transcriptEntry
 
 $shortFile = if ($affectedFile) { Split-Path $affectedFile -Leaf } else { "unknown" }
 
 git -C $script:AuditRepo add -- "sessions/$($script:SessionId)/$metaFileName"
-New-AuditCommit -FilePath "sessions/$($script:SessionId)/$fileName" `
+git -C $script:AuditRepo add -- "sessions/$($script:SessionId)/$resultFileName"
+New-AuditCommit -FilePath "sessions/$($script:SessionId)/$patchFileName" `
   -Message "[$($script:SessionId)] changes: $toolName on $shortFile"
