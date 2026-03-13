@@ -175,6 +175,40 @@ jobs:
         with:
           path: artifacts
 
+      - name: Remove existing release assets for this tag
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const owner = context.repo.owner;
+            const repo = context.repo.repo;
+            const tag = context.ref.replace('refs/tags/', '');
+
+            let release;
+            try {
+              const { data } = await github.rest.repos.getReleaseByTag({ owner, repo, tag });
+              release = data;
+            } catch (error) {
+              if (error.status === 404) {
+                core.info(`No existing release for tag ${tag}; nothing to clean up.`);
+                return;
+              }
+              throw error;
+            }
+
+            if (!release.assets || release.assets.length === 0) {
+              core.info(`Release for tag ${tag} has no uploaded assets to delete.`);
+              return;
+            }
+
+            for (const asset of release.assets) {
+              core.info(`Deleting existing asset: ${asset.name}`);
+              await github.rest.repos.deleteReleaseAsset({
+                owner,
+                repo,
+                asset_id: asset.id,
+              });
+            }
+
       - name: Create release
         uses: softprops/action-gh-release@v2
         with:
