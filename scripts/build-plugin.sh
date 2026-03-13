@@ -14,10 +14,12 @@ fi
 
 PLUGIN_NAME=$(jq -r '.name' "$PLUGIN_JSON")
 PLUGIN_VERSION=$(jq -r '.version' "$PLUGIN_JSON")
+PACKAGE_NAME="${PLUGIN_PACKAGE_NAME_OVERRIDE:-$PLUGIN_NAME}"
+PACKAGE_VERSION="${PLUGIN_VERSION_OVERRIDE:-$PLUGIN_VERSION}"
 BUILD_DIR="$REPO_ROOT/dist"
-STAGE_DIR="$BUILD_DIR/$PLUGIN_NAME"
+STAGE_DIR="$BUILD_DIR/$PACKAGE_NAME"
 
-echo "==> Building $PLUGIN_NAME v$PLUGIN_VERSION"
+echo "==> Building $PACKAGE_NAME v$PACKAGE_VERSION"
 
 # Clean previous build
 rm -rf "$STAGE_DIR"
@@ -46,17 +48,17 @@ chmod +x "$STAGE_DIR/.github/hooks/scripts/"*.sh
 echo "==> Creating archives in $BUILD_DIR/"
 
 # Tar.gz (Linux/macOS)
-tar -czf "$BUILD_DIR/${PLUGIN_NAME}-${PLUGIN_VERSION}.tar.gz" \
-  -C "$BUILD_DIR" "$PLUGIN_NAME"
+tar -czf "$BUILD_DIR/${PACKAGE_NAME}-${PACKAGE_VERSION}.tar.gz" \
+  -C "$BUILD_DIR" "$PACKAGE_NAME"
 
 # Zip (Windows / universal)
-(cd "$BUILD_DIR" && zip -rq "${PLUGIN_NAME}-${PLUGIN_VERSION}.zip" "$PLUGIN_NAME")
+(cd "$BUILD_DIR" && zip -rq "${PACKAGE_NAME}-${PACKAGE_VERSION}.zip" "$PACKAGE_NAME")
 
 # ---- Summary ----
 echo ""
 echo "Plugin package built successfully:"
-echo "  $BUILD_DIR/${PLUGIN_NAME}-${PLUGIN_VERSION}.tar.gz"
-echo "  $BUILD_DIR/${PLUGIN_NAME}-${PLUGIN_VERSION}.zip"
+echo "  $BUILD_DIR/${PACKAGE_NAME}-${PACKAGE_VERSION}.tar.gz"
+echo "  $BUILD_DIR/${PACKAGE_NAME}-${PACKAGE_VERSION}.zip"
 echo ""
 echo "Install locally by extracting and pointing VS Code to the directory:"
-echo '  "chat.plugins.paths": { "/path/to/'"$PLUGIN_NAME"'": true }'
+echo '  "chat.plugins.paths": { "/path/to/'"$PACKAGE_NAME"'": true }'
