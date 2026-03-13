@@ -1,9 +1,9 @@
-name: Release Plugin (Main)
+name: Release Plugin (CLI)
 
 on:
   push:
     tags:
-      - "v*"  # Trigger on main release tags like v1.0.0
+      - "cli-v*"  # Trigger on CLI-specific tags like cli-v1.0.0
   workflow_dispatch:
     inputs:
       version_override:
@@ -95,15 +95,16 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       plugin_name: ${{ steps.meta.outputs.name }}
+      package_base_name: ${{ steps.meta.outputs.package_base_name }}
       plugin_version: ${{ steps.meta.outputs.version }}
     steps:
       - uses: actions/checkout@v4
 
-      - name: Enforce main branch for manual runs
+      - name: Enforce copilot-cli branch for manual runs
         if: github.event_name == 'workflow_dispatch'
         run: |
-          if [[ "${GITHUB_REF_NAME}" != "main" ]]; then
-            echo "::error::This workflow_dispatch release pipeline is restricted to the main branch."
+          if [[ "${GITHUB_REF_NAME}" != "copilot-cli" ]]; then
+            echo "::error::This workflow_dispatch release pipeline is restricted to the copilot-cli branch."
             exit 1
           fi
 
@@ -112,17 +113,19 @@ jobs:
         run: |
           name=$(jq -r '.name' .github/plugin/plugin.json)
           version=$(jq -r '.version' .github/plugin/plugin.json)
+          package_base_name="${name}-for-copilot-cli"
           # Allow workflow_dispatch override
           if [[ -n "${{ github.event.inputs.version_override }}" ]]; then
             version="${{ github.event.inputs.version_override }}"
           fi
           echo "name=$name" >> "$GITHUB_OUTPUT"
+          echo "package_base_name=$package_base_name" >> "$GITHUB_OUTPUT"
           echo "version=$version" >> "$GITHUB_OUTPUT"
 
       - name: Validate tag version matches plugin version
-        if: startsWith(github.ref, 'refs/tags/v')
+        if: startsWith(github.ref, 'refs/tags/cli-v')
         run: |
-          tag_version="${GITHUB_REF_NAME#v}"
+          tag_version="${GITHUB_REF_NAME#cli-v}"
           if [[ "$tag_version" != "${{ steps.meta.outputs.version }}" ]]; then
             echo "::error::Tag version '$tag_version' does not match effective plugin version '${{ steps.meta.outputs.version }}'."
             exit 1
@@ -130,6 +133,7 @@ jobs:
 
       - name: Build plugin
         env:
+          PLUGIN_PACKAGE_NAME_OVERRIDE: ${{ steps.meta.outputs.package_base_name }}
           PLUGIN_VERSION_OVERRIDE: ${{ steps.meta.outputs.version }}
         run: |
           chmod +x scripts/build-plugin.sh
@@ -139,19 +143,19 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: plugin-zip
-          path: dist/${{ steps.meta.outputs.name }}-${{ steps.meta.outputs.version }}.zip
+          path: dist/${{ steps.meta.outputs.package_base_name }}-${{ steps.meta.outputs.version }}.zip
 
       - name: Upload tar.gz artifact
         uses: actions/upload-artifact@v4
         with:
           name: plugin-tarball
-          path: dist/${{ steps.meta.outputs.name }}-${{ steps.meta.outputs.version }}.tar.gz
+          path: dist/${{ steps.meta.outputs.package_base_name }}-${{ steps.meta.outputs.version }}.tar.gz
 
   release:
     name: Create GitHub Release
     needs: build
     runs-on: ubuntu-latest
-    if: startsWith(github.ref, 'refs/tags/v')
+    if: startsWith(github.ref, 'refs/tags/cli-v')
     steps:
       - uses: actions/checkout@v4
 
@@ -163,7 +167,7 @@ jobs:
       - name: Create release
         uses: softprops/action-gh-release@v2
         with:
-          name: "${{ needs.build.outputs.plugin_name }} ${{ needs.build.outputs.plugin_version }}"
+          name: "${{ needs.build.outputs.package_base_name }} ${{ needs.build.outputs.plugin_version }}"
           body: |
             ## Installation
 
@@ -174,7 +178,7 @@ jobs:
 
             ### Option 2: Install from git
             ```bash
-            git clone https://github.com/${{ github.repository }}.git ~/.copilot-plugins/copilot-flight-recorder
+            git clone -b copilot-cli https://github.com/${{ github.repository }}.git ~/.copilot-plugins/copilot-flight-recorder
             ```
 
             See [README](https://github.com/${{ github.repository }}#readme) for full setup instructions.
