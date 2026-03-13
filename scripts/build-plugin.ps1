@@ -9,10 +9,12 @@ $PluginJsonPath = Join-Path $RepoRoot ".github\plugin\plugin.json"
 $PluginJson     = Get-Content $PluginJsonPath -Raw | ConvertFrom-Json
 $PluginName     = $PluginJson.name
 $PluginVersion  = $PluginJson.version
+$PackageName    = if ($env:PLUGIN_PACKAGE_NAME_OVERRIDE) { $env:PLUGIN_PACKAGE_NAME_OVERRIDE } else { $PluginName }
+$PackageVersion = if ($env:PLUGIN_VERSION_OVERRIDE) { $env:PLUGIN_VERSION_OVERRIDE } else { $PluginVersion }
 $BuildDir       = Join-Path $RepoRoot "dist"
-$StageDir       = Join-Path $BuildDir $PluginName
+$StageDir       = Join-Path $BuildDir $PackageName
 
-Write-Host "==> Building $PluginName v$PluginVersion"
+Write-Host "==> Building $PackageName v$PackageVersion"
 
 # Clean previous build
 if (Test-Path $StageDir) { Remove-Item $StageDir -Recurse -Force }
@@ -36,7 +38,7 @@ Copy-Item (Join-Path $RepoRoot "README.md")    (Join-Path $StageDir "README.md")
 
 # ---- Create the zip archive ----
 Write-Host "==> Creating archive in $BuildDir\"
-$ZipPath = Join-Path $BuildDir "$PluginName-$PluginVersion.zip"
+$ZipPath = Join-Path $BuildDir "$PackageName-$PackageVersion.zip"
 if (Test-Path $ZipPath) { Remove-Item $ZipPath -Force }
 Compress-Archive -Path $StageDir -DestinationPath $ZipPath
 
